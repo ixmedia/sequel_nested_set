@@ -226,7 +226,7 @@ module Sequel
         # moves. Pass a block to perform an operation on each item. The block
         # arguments are |item, level|.
         def to_nested_a(flat = false, mover = nil, &block)
-          descendants = self.all
+          descendants = self.nested(self.qualified_left_column).all
           array = []
 
           while not descendants.empty?
@@ -312,7 +312,7 @@ module Sequel
 
         # Returns the immediate parent
         def parent
-          model.filter(self.primary_key => self.parent_id).first if self.parent_id
+          model.nested(self.class.qualified_left_column).filter(self.primary_key => self.parent_id).first if self.parent_id
         end
 
         # Returns the dataset for all parent nodes and self
@@ -322,12 +322,12 @@ module Sequel
 
         # Returns the dataset for all children of the parent, including self
         def self_and_siblings
-          model.filter(self.class.qualified_parent_column  => self.parent_id)
+          model.nested(self.class.qualified_left_column).filter(self.class.qualified_parent_column  => self.parent_id)
         end
 
         # Returns dataset for itself and all of its nested children
         def self_and_descendants
-          model.filter("#{self.class.qualified_left_column} >= :left AND #{self.class.qualified_right_column} <= :right", :left => left, :right => right)
+          model.nested(self.class.qualified_left_column).filter("#{self.class.qualified_left_column} >= :left AND #{self.class.qualified_right_column} <= :right", :left => left, :right => right)
         end
 
         # Filter for dataset that will exclude self object
