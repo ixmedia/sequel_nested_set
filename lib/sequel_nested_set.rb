@@ -65,8 +65,16 @@ module Sequel
         end
         model.nested_set_options = options
 
-        model.before_create { set_default_left_and_right }
-        model.before_destroy { prune_from_tree }
+        model.class_eval do
+          def before_create
+            set_default_left_and_right
+            super
+          end
+          def before_destroy
+            prune_from_tree
+            super
+          end
+        end
 
         model.set_restricted_columns(*([:left, :right, :parent_id, options[:parent_column], options[:left_column], options[:right_column]].uniq))
       end
@@ -75,8 +83,8 @@ module Sequel
         # All nested set queries should use this nested dataset method, which returns Dataset that provides
         # proper :scope which you can configure on is :nested, { :scope => ... }
         # declaration in your Sequel::Model
-        def nested
-          order(self.model_classes[nil].qualified_left_column)
+        def nested(left)
+          order(left)
         end
 
         # Returns dataset for all root nodes
@@ -98,7 +106,7 @@ module Sequel
         end
         
         def qualified_parent_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:parent_column]}".to_sym
+          "#{self.nested_set_options[:parent_column]}".to_sym
         end
 
         def qualified_parent_column_literal
@@ -106,7 +114,7 @@ module Sequel
         end
 
         def qualified_left_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:left_column]}".to_sym
+          "#{self.nested_set_options[:left_column]}".to_sym
         end
 
         def qualified_left_column_literal
@@ -114,7 +122,7 @@ module Sequel
         end
 
         def qualified_right_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:right_column]}".to_sym
+          "#{self.nested_set_options[:right_column]}".to_sym
         end
 
         def qualified_right_column_literal
@@ -218,7 +226,7 @@ module Sequel
         # moves. Pass a block to perform an operation on each item. The block
         # arguments are |item, level|.
         def to_nested_a(flat = false, mover = nil, &block)
-          descendants = self.nested.all
+          descendants = self.all
           array = []
 
           while not descendants.empty?
@@ -304,32 +312,32 @@ module Sequel
 
         # Returns the immediate parent
         def parent
-          dataset.nested.filter(self.primary_key => self.parent_id).first if self.parent_id
+          model.filter(self.primary_key => self.parent_id).first if self.parent_id
         end
 
         # Returns the dataset for all parent nodes and self
         def self_and_ancestors
-          dataset.filter((self.class.qualified_left_column <= left) & (self.class.qualified_right_column  >= right))
+          model.filter("#{self.class.qualified_left_column} <= :left AND #{self.class.qualified_right_column} >= :right", :left => left, :right => right)
         end
 
         # Returns the dataset for all children of the parent, including self
         def self_and_siblings
-          dataset.nested.filter(self.class.qualified_parent_column  => self.parent_id)
+          model.filter(self.class.qualified_parent_column  => self.parent_id)
         end
 
         # Returns dataset for itself and all of its nested children
         def self_and_descendants
-          dataset.nested.filter((self.class.qualified_left_column >= left) & (self.class.qualified_right_column <= right))
+          model.filter("#{self.class.qualified_left_column} >= :left AND #{self.class.qualified_right_column} <= :right", :left => left, :right => right)
         end
 
         # Filter for dataset that will exclude self object
         def without_self(dataset)
-          dataset.nested.filter(~{self.primary_key => self.id})
+          dataset.filter(~{self.primary_key => self.id})
         end
 
         # Returns dataset for its immediate children
         def children
-          dataset.nested.filter(self.class.qualified_parent_column => self.id)
+          model.filter(self.class.qualified_parent_column => self.id)
         end
 
         # Returns dataset for all parents
@@ -459,7 +467,7 @@ module Sequel
         protected
         # on creation, set automatically lft and rgt to the end of the tree
         def set_default_left_and_right
-          maxright = dataset.nested.max(self.class.qualified_right_column).to_i || 0
+          maxright = model.dataset.nested(self.class.qualified_left_column).max(self.class.qualified_right_column).to_i || 0
           # adds the new node to the right of all existing nodes
           self.left = maxright + 1
           self.right = maxright + 2
@@ -535,7 +543,7 @@ module Sequel
             end
 
             # TODO : scope stuff for update
-            self.dataset.update(
+            model.dataset.update(
                "#{self.class.qualified_left_column_literal} = (CASE " +
                 "WHEN #{self.class.qualified_left_column_literal} BETWEEN #{a} AND #{b} " +
                   "THEN #{self.class.qualified_left_column_literal} + #{d} - #{b} " +
