@@ -570,11 +570,12 @@ module Sequel
                 "WHEN #{self.class.qualified_right_column_literal} BETWEEN #{c} AND #{d} " +
                   "THEN #{self.class.qualified_right_column_literal} + #{a} - #{c} " +
                 "ELSE #{self.class.qualified_right_column_literal} END), " +
-                "#{self.class.qualified_level_column_literal} = #{target.level}, " +
               "#{self.class.qualified_parent_column_literal} = (CASE " +
                 "WHEN #{self.primary_key} = #{self.id} THEN #{new_parent} " +
                 "ELSE #{self.class.qualified_parent_column_literal} END)"
             )
+            update(self.class.qualified_level_column => (root? ? 0 : ancestors.count))
+            
             target.refresh if target
             self.refresh
             #TODO: add after_move
