@@ -574,6 +574,9 @@ module Sequel
                 "WHEN #{self.primary_key} = #{self.id} THEN #{new_parent} " +
                 "ELSE #{self.class.qualified_parent_column_literal} END)"
             )
+            
+            target.refresh if target
+            self.refresh
             update(self.class.qualified_level_column => (root? ? 0 : ancestors.count))
             
             if !root?
@@ -581,9 +584,6 @@ module Sequel
                 children.update(self.class.qualified_level_column => (children.root? ? 0 : children.ancestors.count))
               end
             end
-            
-            target.refresh if target
-            self.refresh
             #TODO: add after_move
           end
         end
