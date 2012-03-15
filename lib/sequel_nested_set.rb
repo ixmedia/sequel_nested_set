@@ -53,6 +53,7 @@ module Sequel
           :parent_column => :parent_id,
           :left_column => :lft,
           :right_column => :rgt,
+          :level_column => :level,
           :dependent => :delete_all, # or :destroy
         }.merge(options)
 
@@ -67,7 +68,7 @@ module Sequel
 
         model.class_eval do
           def before_create
-            set_default_left_and_right
+            set_default_left_and_right_and_level
             super
           end
           def before_destroy
@@ -76,7 +77,7 @@ module Sequel
           end
         end
 
-        model.set_restricted_columns(*([:left, :right, :parent_id, options[:parent_column], options[:left_column], options[:right_column]].uniq))
+        model.set_restricted_columns(*([:left, :right, :level, :parent_id, options[:parent_column], options[:left_column], options[:right_column], options[:level]].uniq))
       end
 
       module DatasetMethods
@@ -127,6 +128,14 @@ module Sequel
 
         def qualified_right_column_literal
           self.dataset.literal(self.nested_set_options[:right_column])
+        end
+
+        def qualified_level_column(table_name = self.implicit_table_name)
+          "#{self.nested_set_options[:level_column]}".to_sym
+        end
+
+        def qualified_level_column_literal
+          self.dataset.literal(self.nested_set_options[:level_column])
         end
 
         def valid?
@@ -255,6 +264,11 @@ module Sequel
           self[self.nested_set_options[:right_column]] = value
         end
 
+        # Setter of the level column
+        def level=(value)
+          self[self.nested_set_options[:level_column]] = value
+        end
+
         # Getter of the left column
         def left
           self[self.nested_set_options[:left_column]] || 0
@@ -263,6 +277,11 @@ module Sequel
         # Getter of the right column
         def right
           self[self.nested_set_options[:right_column]] || 0
+        end
+
+        # Getter of the level column
+        def level
+          self[self.nested_set_options[:level_column]] || 0
         end
 
         # Setter of the parent column
@@ -275,15 +294,9 @@ module Sequel
           self[self.nested_set_options[:parent_column]]
         end
 
-        # Set left=, right= and parent_id= to be procted methods
+        # Set left=, level=, right= and parent_id= to be procted methods
         # this methods should be used only internally by nested set plugin
-        protected :left=, :right=, :parent_id=
-
-        # Returns the level of this object in the tree
-        # root level is 0
-        def level
-          root? ? 0 : ancestors.count
-        end
+        protected :left=, :level=, :right=, :parent_id=
 
         # Returns true if this is a root node
         def root?
@@ -465,12 +478,13 @@ module Sequel
         end
 
         protected
-        # on creation, set automatically lft and rgt to the end of the tree
-        def set_default_left_and_right
+        # on creation, set automatically lft and rgt and level to the end of the tree
+        def set_default_left_and_right_and_level
           maxright = model.dataset.nested(self.class.qualified_left_column).max(self.class.qualified_right_column).to_i || 0
           # adds the new node to the right of all existing nodes
           self.left = maxright + 1
           self.right = maxright + 2
+          self.level = 0
         end
 
         # Prunes a branch off of the tree, shifting all of the elements on the right
@@ -556,6 +570,7 @@ module Sequel
                 "WHEN #{self.class.qualified_right_column_literal} BETWEEN #{c} AND #{d} " +
                   "THEN #{self.class.qualified_right_column_literal} + #{a} - #{c} " +
                 "ELSE #{self.class.qualified_right_column_literal} END), " +
+                "#{self.class.qualified_level_column_literal} = #{target.level}, " +
               "#{self.class.qualified_parent_column_literal} = (CASE " +
                 "WHEN #{self.primary_key} = #{self.id} THEN #{new_parent} " +
                 "ELSE #{self.class.qualified_parent_column_literal} END)"
