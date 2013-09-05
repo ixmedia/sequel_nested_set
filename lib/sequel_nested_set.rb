@@ -147,7 +147,7 @@ module Sequel
             filter({ self.qualified_left_column => nil } |
               { self.qualified_right_column => nil } |
               (self.qualified_left_column >= self.qualified_right_column) |
-            (~{ self.qualified_parent_column => nil } & ((self.qualified_left_column <= self.qualified_left_column(:parent)) |
+            (( self.qualified_parent_column != nil ) & ((self.qualified_left_column <= self.qualified_left_column(:parent)) |
               (self.qualified_right_column >= self.qualified_right_column(:parent))))).count == 0
         end
 
@@ -156,7 +156,7 @@ module Sequel
             filter({ self.qualified_left_column => nil } |
               { self.qualified_right_column => nil } |
               (self.qualified_left_column >= self.qualified_right_column) |
-            (~{ self.qualified_parent_column => nil } & ((self.qualified_left_column <= self.qualified_left_column(:parent)) |
+            (( self.qualified_parent_column != nil ) & ((self.qualified_left_column <= self.qualified_left_column(:parent)) |
               (self.qualified_right_column >= self.qualified_right_column(:parent)))))
         end
 
@@ -345,7 +345,7 @@ module Sequel
 
         # Filter for dataset that will exclude self object
         def without_self(dataset)
-          dataset.filter(~{self.primary_key => self.id})
+          dataset.exclude({self.primary_key => self.id})
         end
 
         # Returns dataset for its immediate children
