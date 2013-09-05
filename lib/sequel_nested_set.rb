@@ -325,7 +325,7 @@ module Sequel
 
         # Returns the immediate parent
         def parent
-          model.nested(self.class.qualified_left_column).filter(self.primary_key => self.parent_id).first if self.parent_id
+          model.dataset.nested(self.class.qualified_left_column).filter(self.primary_key => self.parent_id).first if self.parent_id
         end
 
         # Returns the dataset for all parent nodes and self
@@ -335,12 +335,12 @@ module Sequel
 
         # Returns the dataset for all children of the parent, including self
         def self_and_siblings
-          model.nested(self.class.qualified_left_column).filter(self.class.qualified_parent_column  => self.parent_id)
+          model.dataset.nested(self.class.qualified_left_column).filter(self.class.qualified_parent_column  => self.parent_id)
         end
 
         # Returns dataset for itself and all of its nested children
         def self_and_descendants
-          model.nested(self.class.qualified_left_column).filter("#{self.class.qualified_left_column} >= :left AND #{self.class.qualified_right_column} <= :right", :left => left, :right => right)
+          model.dataset.nested(self.class.qualified_left_column).filter("#{self.class.qualified_left_column} >= :left AND #{self.class.qualified_right_column} <= :right", :left => left, :right => right)
         end
 
         # Filter for dataset that will exclude self object
