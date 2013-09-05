@@ -77,7 +77,7 @@ module Sequel
           end
         end
 
-        model.set_restricted_columns(*([:left, :right, :level, :parent_id, options[:parent_column], options[:left_column], options[:right_column], options[:level]].uniq))
+        model.set_restricted_columns(*([:left, :right, :parent_id, options[:parent_column], options[:left_column], options[:right_column]].uniq))
       end
 
       module DatasetMethods
