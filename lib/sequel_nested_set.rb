@@ -85,7 +85,6 @@ module Sequel
         # proper :scope which you can configure on is :nested, { :scope => ... }
         # declaration in your Sequel::Model
         def nested(left)
-          puts order(left).sql
           order(left)
         end
 
@@ -149,7 +148,6 @@ module Sequel
         end
 
         def valid?
-          puts self.no_duplicates_for_columns?.inspect
           self.left_and_rights_valid? && self.no_duplicates_for_columns? && self.all_roots_valid?
         end
 
@@ -598,7 +596,6 @@ module Sequel
             update(self.nested_set_options[:level_column] => (root? ? 0 : ancestors.count))
             children.each do |child|
               child.update(self.nested_set_options[:level_column] => child.ancestors.count)
-              puts child.inspect
             end
             
             if !root?
