@@ -105,6 +105,10 @@ module Sequel
         def method_missing(method, *args, &block)
           if self.dataset.respond_to?(method)
             self.dataset.send(method, *args, &block)
+          elsif method =~ /^qualified_(.*)_literal$/
+            self.send(:qualified_column_literal, $1.to_sym)
+          elsif method =~ /^qualified_(.*)$/
+            self.send(:qualified_column, $1.to_sym, *args)
           else
             super
           end
@@ -114,37 +118,13 @@ module Sequel
         def root
           roots.first
         end
-        
-        def qualified_parent_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:parent_column]}".to_sym
+
+        def qualified_column(column_key, table_name = self.table_name)
+          "#{table_name}__#{self.nested_set_options[column_key]}".to_sym
         end
 
-        def qualified_parent_column_literal
-          self.dataset.literal(self.nested_set_options[:parent_column])
-        end
-
-        def qualified_left_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:left_column]}".to_sym
-        end
-
-        def qualified_left_column_literal
-          self.dataset.literal(self.nested_set_options[:left_column])
-        end
-
-        def qualified_right_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:right_column]}".to_sym
-        end
-
-        def qualified_right_column_literal
-          self.dataset.literal(self.nested_set_options[:right_column])
-        end
-
-        def qualified_level_column(table_name = self.implicit_table_name)
-          "#{table_name}__#{self.nested_set_options[:level_column]}".to_sym
-        end
-
-        def qualified_level_column_literal
-          self.dataset.literal(self.nested_set_options[:level_column])
+        def qualified_column_literal(column_key)
+          self.dataset.literal(self.nested_set_options[column_key])
         end
 
         def valid?
