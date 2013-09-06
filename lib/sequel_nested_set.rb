@@ -370,7 +370,7 @@ module Sequel
 
         # Returns dataset for all of its nested children which do not have children
         def leaves
-          descendants.filter(self.class.qualified_right_column - self.class.qualified_left_column => 1)
+          descendants.filter("#{self.class.qualified_right_column} - #{self.class.qualified_left_column}" => 1)
         end
 
         def is_descendant_of?(other)
