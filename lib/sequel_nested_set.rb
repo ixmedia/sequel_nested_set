@@ -77,7 +77,7 @@ module Sequel
           end
         end
 
-        model.set_restricted_columns(*([:left, :right, :level, :parent_id, options[:parent_column], options[:left_column], options[:right_column], options[:level]].uniq))
+        model.set_restricted_columns(*([:left, :right, :parent_id, options[:parent_column], options[:left_column], options[:right_column]].uniq))
       end
 
       module DatasetMethods
@@ -90,52 +90,41 @@ module Sequel
 
         # Returns dataset for all root nodes
         def roots
-          nested.filter(self.model_classes[nil].qualified_parent_column => nil)
+          nested(self.model.qualified_left_column).filter(self.model.qualified_parent_column => nil)
         end
 
         # Returns dataset for all of nodes which do not have children
         def leaves
-          nested.filter(self.model_classes[nil].qualified_right_column - self.model_classes[nil].qualified_left_column => 1)
+          lft = self.model.qualified_left_column_literal
+          rgt = self.model.qualified_right_column_literal
+          nested(self.model.qualified_left_column).where("#{rgt} == #{lft} + 1")
         end
       end
 
       module ClassMethods
+        def method_missing(method, *args, &block)
+          if self.dataset.respond_to?(method)
+            self.dataset.send(method, *args, &block)
+          elsif method =~ /^qualified_(.*)_literal$/
+            self.send(:qualified_column_literal, $1.to_sym)
+          elsif method =~ /^qualified_(.*)$/
+            self.send(:qualified_column, $1.to_sym, *args)
+          else
+            super
+          end
+        end
 
         # Returns the first root
         def root
           roots.first
         end
-        
-        def qualified_parent_column(table_name = self.implicit_table_name)
-          "#{self.nested_set_options[:parent_column]}".to_sym
+
+        def qualified_column(column_key, table_name = self.table_name)
+          "#{table_name}__#{self.nested_set_options[column_key]}".to_sym
         end
 
-        def qualified_parent_column_literal
-          self.dataset.literal(self.nested_set_options[:parent_column])
-        end
-
-        def qualified_left_column(table_name = self.implicit_table_name)
-          "#{self.nested_set_options[:left_column]}".to_sym
-        end
-
-        def qualified_left_column_literal
-          self.dataset.literal(self.nested_set_options[:left_column])
-        end
-
-        def qualified_right_column(table_name = self.implicit_table_name)
-          "#{self.nested_set_options[:right_column]}".to_sym
-        end
-
-        def qualified_right_column_literal
-          self.dataset.literal(self.nested_set_options[:right_column])
-        end
-
-        def qualified_level_column(table_name = self.implicit_table_name)
-          "#{self.nested_set_options[:level_column]}".to_sym
-        end
-
-        def qualified_level_column_literal
-          self.dataset.literal(self.nested_set_options[:level_column])
+        def qualified_column_literal(column_key)
+          self.dataset.literal(self.nested_set_options[column_key])
         end
 
         def valid?
@@ -143,20 +132,27 @@ module Sequel
         end
 
         def left_and_rights_valid?
-          self.left_outer_join(Client.implicit_table_name.as(:parent), self.qualified_parent_column => "parent__#{self.primary_key}".to_sym).
-            filter({ self.qualified_left_column => nil } |
-              { self.qualified_right_column => nil } |
-              (self.qualified_left_column >= self.qualified_right_column) |
-            (~{ self.qualified_parent_column => nil } & ((self.qualified_left_column <= self.qualified_left_column(:parent)) |
-              (self.qualified_right_column >= self.qualified_right_column(:parent))))).count == 0
+          self_lft = Sequel.expr(self.qualified_left_column)
+          self_rgt = Sequel.expr(self.qualified_right_column)
+          self_prt = Sequel.expr(self.qualified_parent_column)
+          prt_lft = Sequel.expr(self.qualified_left_column(:parent))
+          prt_rgt = Sequel.expr(self.qualified_right_column(:parent))
+          self.left_outer_join(Sequel.as(self.implicit_table_name, :parent), self.qualified_parent_column => "parent__#{self.primary_key}".to_sym)
+            .where({ self.qualified_left_column => nil })
+            .or({ self.qualified_right_column => nil })
+            .or(self_lft >= self_rgt)
+            .or("(`#{self_prt.table}`.`#{self_prt.column}` IS NOT NULL
+                      AND `#{self_lft.table}`.`#{self_lft.column}` <= `#{prt_lft.table}`.`#{prt_lft.column}`)
+                    OR `#{self_rgt.table}`.`#{self_rgt.column}` >= `#{prt_rgt.table}`.`#{prt_rgt.column}`")
+            .all.length == 0
         end
 
         def left_and_rights_valid_dataset?
-          self.left_outer_join(Client.implicit_table_name.as(:parent), self.qualified_parent_column => "parent__#{self.primary_key}".to_sym).
-            filter({ self.qualified_left_column => nil } |
-              { self.qualified_right_column => nil } |
-              (self.qualified_left_column >= self.qualified_right_column) |
-            (~{ self.qualified_parent_column => nil } & ((self.qualified_left_column <= self.qualified_left_column(:parent)) |
+          self.left_outer_join(Sequel.as(self.implicit_table_name.as, :parent), self.qualified_parent_column => "parent__#{self.primary_key}".to_sym).
+            filter({ self.qualified_left_column => nil })
+            .or({ self.qualified_right_column => nil })
+            .or(self.qualified_left_column >= self.qualified_right_column)
+            .or((( self.qualified_parent_column != nil ) & ((self.qualified_left_column <= self.qualified_left_column(:parent))
               (self.qualified_right_column >= self.qualified_right_column(:parent)))))
         end
 
@@ -166,7 +162,7 @@ module Sequel
           #            connection.quote_column_name(c)
           #          end.push(nil).join(", ")
           [self.qualified_left_column, self.qualified_right_column].all? do |column|
-            self.dataset.select(column, :count[column]).group(column).having(:count[column] > 1).first.nil?
+            self.dataset.select(column).select_more{count(column)}.group(column).having{count(column) > 1}.first.nil?
           end
         end
 
@@ -195,7 +191,7 @@ module Sequel
         # Rebuilds the left & rights if unset or invalid.  Also very useful for converting from acts_as_tree.
         def rebuild!
 
-          scope = lambda{}
+          scope = lambda{|node|}
           # TODO: add scope stuff
           
           # Don't rebuild a valid tree.
@@ -325,27 +321,27 @@ module Sequel
 
         # Returns the immediate parent
         def parent
-          model.nested(self.class.qualified_left_column).filter(self.primary_key => self.parent_id).first if self.parent_id
+          model.dataset.nested(self.class.qualified_left_column).filter(self.primary_key => self.parent_id).first if self.parent_id
         end
 
         # Returns the dataset for all parent nodes and self
         def self_and_ancestors
-          model.filter("#{self.class.qualified_left_column} <= :left AND #{self.class.qualified_right_column} >= :right", :left => left, :right => right)
+          model.filter("#{self.class.qualified_left_column_literal} <= :left AND #{self.class.qualified_right_column_literal} >= :right", :left => left, :right => right)
         end
 
         # Returns the dataset for all children of the parent, including self
         def self_and_siblings
-          model.nested(self.class.qualified_left_column).filter(self.class.qualified_parent_column  => self.parent_id)
+          model.dataset.nested(self.class.qualified_left_column).filter(self.class.qualified_parent_column  => self.parent_id)
         end
 
         # Returns dataset for itself and all of its nested children
         def self_and_descendants
-          model.nested(self.class.qualified_left_column).filter("#{self.class.qualified_left_column} >= :left AND #{self.class.qualified_right_column} <= :right", :left => left, :right => right)
+          model.dataset.nested(self.class.qualified_left_column).filter("#{self.class.qualified_left_column_literal} >= :left AND #{self.class.qualified_right_column_literal} <= :right", :left => left, :right => right)
         end
 
         # Filter for dataset that will exclude self object
         def without_self(dataset)
-          dataset.filter(~{self.primary_key => self.id})
+          dataset.exclude({self.primary_key => self.id})
         end
 
         # Returns dataset for its immediate children
@@ -370,7 +366,7 @@ module Sequel
 
         # Returns dataset for all of its nested children which do not have children
         def leaves
-          descendants.filter(self.class.qualified_right_column - self.class.qualified_left_column => 1)
+          descendants.where("#{self.class.qualified_right_column_literal} - #{self.class.qualified_left_column_literal} = 1")
         end
 
         def is_descendant_of?(other)
@@ -398,12 +394,12 @@ module Sequel
 
         # Find the first sibling to the left
         def left_sibling
-          siblings.filter(self.class.qualified_left_column < left).order(self.class.qualified_left_column.desc).first
+          siblings.where("#{self.class.qualified_left_column_literal} < #{left}").order(Sequel.desc(self.class.qualified_left_column)).first
         end
 
         # Find the first sibling to the right
         def right_sibling
-          siblings.filter(self.class.qualified_left_column > left).first
+          siblings.where("#{self.class.qualified_left_column_literal} > #{left}").first
         end
 
 
@@ -577,11 +573,14 @@ module Sequel
             
             target.refresh if target
             self.refresh
-            update(self.class.qualified_level_column => (root? ? 0 : ancestors.count))
+            update(self.nested_set_options[:level_column] => (root? ? 0 : ancestors.count))
+            children.each do |child|
+              child.update(self.nested_set_options[:level_column] => child.ancestors.count)
+            end
             
             if !root?
-              siblings.each do |children|
-                children.update(self.class.qualified_level_column => (children.root? ? 0 : children.ancestors.count))
+              siblings.each do |sibling|
+                sibling.update(self.nested_set_options[:level_column] => (sibling.root? ? 0 : sibling.ancestors.count))
               end
             end
             #TODO: add after_move

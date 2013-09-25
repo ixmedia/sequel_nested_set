@@ -46,7 +46,7 @@ describe "Sequel Nested Set" do
 
       it "should have all leaves" do
         leaves = Client.leaves.all
-        leaves.should == Client.nested.filter(:rgt - :lft => 1).all
+        leaves.should == Client.nested(:lft).where("rgt - lft = 1").all
         leaves.should == [@node1, @node2_1, @node3, @root2]
       end
 
@@ -95,9 +95,9 @@ describe "Sequel Nested Set" do
       end
 
       it "should parent, left and right setters be protected methods" do
-        Client.new.protected_methods.include?("left=").should be_true
-        Client.new.protected_methods.include?("right=").should be_true
-        Client.new.protected_methods.include?("parent_id=").should be_true
+        Client.new.protected_methods.include?("left=".to_sym).should be_true
+        Client.new.protected_methods.include?("right=".to_sym).should be_true
+        Client.new.protected_methods.include?("parent_id=".to_sym).should be_true
       end
 
       it "shoud have faild on new when passing keys configured as right_column, left_column, parent_column" do
@@ -318,7 +318,7 @@ describe "Sequel Nested Set" do
         @node2.move_to_root
         @node2.parent.should be_nil
         @node2.level.should == 0
-        @node2_1.level.should == 1
+        @node2_1.refresh.level.should == 1
         @node2.left == 1
         @node2.right == 4
         Client.valid?.should be_true
